@@ -1,6 +1,6 @@
 # MultiVibeChat
 
-![Multi Vibe Chat Screenshot](https://i.imgur.com/your-screenshot-url.png) <!-- Replace with a real screenshot URL later -->
+![Multi Vibe Chat Screenshot](https://i.imgur.com/reviWKK.png) <!-- Replace with a real screenshot URL later -->
 
 A desktop application that provides a unified, tiling interface for prompting multiple AI chat services simultaneously with their native Websites, no APIs needed. Built with Python and PyQt6.
 
@@ -11,6 +11,7 @@ A desktop application that provides a unified, tiling interface for prompting mu
 -   **Profile Manager:** UPCOMMING - Easily create and switch between isolated user profiles to manage multiple accounts for each AI service, all from within the app.
 -   **Individual Zoom Control:** Zoom in and out of each AI window independently using `Ctrl + Mouse Wheel`.
 -   **Send Hotkey:** Use `Ctrl + Enter` in the text box to send your prompt to all services.
+-   Curenntly using existing browser profile to bypass anti bot detection (google complaining about "unsafe browser" upon login)
 
 ## How to Run
 
