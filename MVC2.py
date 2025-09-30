@@ -1,5 +1,5 @@
-#  MultiVibeChat 2 - Multi AI Chat Desktop Client
-# A PyQt6-based application for managing multiple AI chat sessions
+# Multi AI Chat Desktop Client
+# PyQt6-based application for managing multiple AI chat sessions simultaneously
 
 import sys
 import os
@@ -19,9 +19,9 @@ from PyQt6.QtGui import QAction, QGuiApplication, QKeyEvent
 from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEngineScript, QWebEngineUrlRequestInterceptor
 
 class RequestInterceptor(QWebEngineUrlRequestInterceptor):
-    """Adds standard browser headers to requests for compatibility"""
+    """Custom request interceptor for adding HTTP headers"""
     def interceptRequest(self, info):
-        # Standard Chrome browser headers
+        # Modern browser headers
         info.setHttpHeader(b"Accept-Language", b"en-US,en;q=0.9")
         info.setHttpHeader(b"Accept", b"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
         info.setHttpHeader(b"Upgrade-Insecure-Requests", b"1")
@@ -36,7 +36,7 @@ class RequestInterceptor(QWebEngineUrlRequestInterceptor):
 class CustomWebEnginePage(QWebEnginePage):
     def __init__(self, profile, parent=None):
         super().__init__(profile, parent)
-        # Set user agent to match current Chrome version
+        # Current Chrome user agent string
         user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -46,17 +46,17 @@ class CustomWebEnginePage(QWebEnginePage):
         self._popup_windows = []
     
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        # Filter out verbose console messages
+        # Reduce console noise
         if message and ('webdriver' in message.lower() or 'automation' in message.lower()):
             return
         super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
     
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
-        # Allow navigation for popups and redirects
+        # Allow all navigation including popups
         return True
     
     def createWindow(self, window_type):
-        """Handle popup windows for OAuth and other authentication flows"""
+        """Handle popup windows for OAuth flows"""
         from PyQt6.QtWidgets import QDialog, QVBoxLayout, QPushButton
         from PyQt6.QtCore import QTimer
         
@@ -83,13 +83,13 @@ class CustomWebEnginePage(QWebEnginePage):
         
         popup.setLayout(layout)
         
-        # Store reference to prevent garbage collection
+        # Keep reference to prevent garbage collection
         self._popup_windows.append(popup)
         
-        # Show popup window
+        # Display popup
         popup.show()
         
-        # Auto-close when authentication flow completes
+        # Auto-close on auth completion
         def check_auth_complete():
             try:
                 url = popup_page.url().toString()
@@ -171,12 +171,12 @@ class MultiVibeChat(QMainWindow):
         self.profile_name = profile_name
         self.browsers = [] 
         self.is_grid_layout = True
-        self.auto_inject_enabled = True  # Toggle for auto-injection
+        self.broadcast_enabled = True  # Toggle for unified prompt delivery
         self.targets = {
             'ChatGPT': 'https://chatgpt.com/', 'Claude': 'https://claude.ai/new',
             'Grok': 'https://x.com/i/grok', 'AI Studio': 'https://aistudio.google.com/prompts/new_chat'
         }
-        self.prompt_injection_js = {
+        self.prompt_templates = {
             'ChatGPT': """var input = document.querySelector('div#prompt-textarea[contenteditable="true"]'); if (input) {{ input.innerHTML = '<p>{prompt}</p>'; input.dispatchEvent(new Event('input', {{ bubbles: true }})); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[data-testid="send-button"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
             'Claude': """var input = document.querySelector('div.ProseMirror[contenteditable="true"]'); if (input) {{ input.innerHTML = '<p>{prompt}</p>'; input.dispatchEvent(new Event('input', {{ bubbles: true }})); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[aria-label="Send message"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
             'Grok': """var input = document.querySelector('textarea[placeholder="Ask anything"]'); if (input) {{ input.focus(); document.execCommand('insertText', false, `{prompt}`); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[aria-label="Grok something"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
@@ -255,15 +255,15 @@ class MultiVibeChat(QMainWindow):
         top_button_layout = QHBoxLayout()
         send_btn, refresh_btn = QPushButton("Send to All"), QPushButton("Refresh All")
         self.layout_switch_btn = QPushButton("Switch to 4x1")
-        self.login_mode_btn = QPushButton("Login Mode: OFF")
-        self.login_mode_btn.setCheckable(True)
-        self.login_mode_btn.setStyleSheet("QPushButton:checked { background-color: #4CAF50; color: white; }")
+        self.focus_mode_btn = QPushButton("Focus Mode: OFF")
+        self.focus_mode_btn.setCheckable(True)
+        self.focus_mode_btn.setStyleSheet("QPushButton:checked { background-color: #4CAF50; color: white; }")
         google_signin_btn = QPushButton("🔐 Sign in with Google")
         google_signin_btn.setStyleSheet("background-color: #4285F4; color: white; font-weight: bold;")
         top_button_layout.addWidget(send_btn)
         top_button_layout.addWidget(refresh_btn)
         top_button_layout.addWidget(self.layout_switch_btn)
-        top_button_layout.addWidget(self.login_mode_btn)
+        top_button_layout.addWidget(self.focus_mode_btn)
         top_button_layout.addWidget(google_signin_btn)
 
         profile_bar_layout = QHBoxLayout()
@@ -285,11 +285,11 @@ class MultiVibeChat(QMainWindow):
         right_panel_layout.addLayout(profile_bar_layout)
         main_control_layout.addWidget(right_panel)
 
-        send_btn.clicked.connect(self.send_to_all_ais)
-        self.prompt_text.ctrlEnterPressed.connect(self.send_to_all_ais)
+        send_btn.clicked.connect(self.broadcast_prompts)
+        self.prompt_text.ctrlEnterPressed.connect(self.broadcast_prompts)
         refresh_btn.clicked.connect(self.refresh_all)
         self.layout_switch_btn.clicked.connect(self.switch_layout)
-        self.login_mode_btn.toggled.connect(self.toggle_login_mode)
+        self.focus_mode_btn.toggled.connect(self.toggle_focus_mode)
         google_signin_btn.clicked.connect(self.open_google_signin)
         switch_profile_btn.clicked.connect(self.switch_profile)
         
@@ -340,20 +340,20 @@ class MultiVibeChat(QMainWindow):
             self.layout_switch_btn.setText("Switch to 4x1")
         self.is_grid_layout = not self.is_grid_layout
 
-    def toggle_login_mode(self, enabled):
-        """Toggle manual interaction mode for authentication"""
-        self.auto_inject_enabled = not enabled
+    def toggle_focus_mode(self, enabled):
+        """Pause automatic broadcasting when focus mode is enabled"""
+        self.broadcast_enabled = not enabled
         if enabled:
-            self.login_mode_btn.setText("Login Mode: ON")
-            self.prompt_text.setPlaceholderText("Login Mode - Manual interaction enabled...")
+            self.focus_mode_btn.setText("Focus Mode: ON")
+            self.prompt_text.setPlaceholderText("Focus mode active...")
             self.prompt_text.setEnabled(False)
         else:
-            self.login_mode_btn.setText("Login Mode: OFF")
+            self.focus_mode_btn.setText("Focus Mode: OFF")
             self.prompt_text.setPlaceholderText("Enter prompt for all AIs (Ctrl+Enter to send)...")
             self.prompt_text.setEnabled(True)
 
-    def send_to_all_ais(self):
-        if not self.auto_inject_enabled:
+    def broadcast_prompts(self):
+        if not self.broadcast_enabled:
             return
         
         prompt = self.prompt_text.toPlainText().strip()
@@ -363,8 +363,8 @@ class MultiVibeChat(QMainWindow):
         for ai_info in self.browsers:
             name = ai_info['name']
             browser = ai_info['browser']
-            if name in self.prompt_injection_js:
-                browser.page().runJavaScript(self.prompt_injection_js[name].format(prompt=js_safe_prompt))
+            if name in self.prompt_templates:
+                browser.page().runJavaScript(self.prompt_templates[name].format(prompt=js_safe_prompt))
                 
         self.prompt_text.clear()
 
@@ -470,14 +470,14 @@ class MultiVibeChat(QMainWindow):
         self.profile.setPersistentStoragePath(current_path)
         self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
         
-        # Set browser language preferences
+        # Language settings
         self.profile.setHttpAcceptLanguage("en-US,en;q=0.9")
         
-        # Add request interceptor for standard headers
+        # HTTP header interceptor
         self.interceptor = RequestInterceptor(self.profile)
         self.profile.setUrlRequestInterceptor(self.interceptor)
         
-        # Enable standard web features
+        # Web features configuration
         settings = self.profile.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True)
@@ -489,14 +489,14 @@ class MultiVibeChat(QMainWindow):
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.XSSAuditingEnabled, True)
         
-        # Browser compatibility enhancements
-        browser_compat_script = """
-        // Standard browser compatibility setup
+        # Align browser runtime configuration with desktop defaults
+        environment_alignment_script = """
+        // Normalize browser API surface
         Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined
         });
         
-        // Plugin information for compatibility
+        // Provide expected plugin descriptors
         Object.defineProperty(navigator, 'plugins', {
             get: () => {
                 return [
@@ -526,12 +526,12 @@ class MultiVibeChat(QMainWindow):
             }
         });
         
-        // Language preferences
+        // Language configuration
         Object.defineProperty(navigator, 'languages', {
             get: () => ['en-US', 'en']
         });
         
-        // Chrome API compatibility layer
+        // Populate chrome.runtime namespace with standard values
         window.chrome = {
             app: {
                 isInstalled: false,
@@ -591,7 +591,7 @@ class MultiVibeChat(QMainWindow):
             loadTimes: function() {}
         };
         
-        // Permissions API compatibility
+        // Permissions API behavior
         const originalQuery = window.navigator.permissions.query;
         window.navigator.permissions.query = (parameters) => (
             parameters.name === 'notifications' ?
@@ -599,27 +599,27 @@ class MultiVibeChat(QMainWindow):
                 originalQuery(parameters)
         );
         
-        // Hardware specifications
+        // Hardware profile
         Object.defineProperty(navigator, 'hardwareConcurrency', {
             get: () => 8
         });
         
-        // Device memory information
+        // Memory profile
         Object.defineProperty(navigator, 'deviceMemory', {
             get: () => 8
         });
         
-        // Platform information
+        // Platform identifier
         Object.defineProperty(navigator, 'platform', {
             get: () => 'Win32'
         });
         
-        // Vendor information
+        // Vendor metadata
         Object.defineProperty(navigator, 'vendor', {
             get: () => 'Google Inc.'
         });
         
-        // Network connection information
+        // Network information
         Object.defineProperty(navigator, 'connection', {
             get: () => ({
                 effectiveType: '4g',
@@ -629,7 +629,7 @@ class MultiVibeChat(QMainWindow):
             })
         });
         
-        // Battery API compatibility
+        // Battery API shim
         if (navigator.getBattery) {
             const originalGetBattery = navigator.getBattery;
             navigator.getBattery = function() {
@@ -642,9 +642,7 @@ class MultiVibeChat(QMainWindow):
             };
         }
         
-        });
-        
-        // Function toString compatibility
+        // Preserve native function signatures
         const originalToString = Function.prototype.toString;
         Function.prototype.toString = function() {
             if (this === navigator.getBattery) {
@@ -653,7 +651,7 @@ class MultiVibeChat(QMainWindow):
             return originalToString.call(this);
         };
         
-        // WebGL renderer information
+        // WebGL rendering info
         const getParameter = WebGLRenderingContext.prototype.getParameter;
         WebGLRenderingContext.prototype.getParameter = function(parameter) {
             if (parameter === 37445) {
@@ -665,7 +663,7 @@ class MultiVibeChat(QMainWindow):
             return getParameter.call(this, parameter);
         };
         
-        // Screen dimensions
+        // Screen metrics
         Object.defineProperty(screen, 'availWidth', {
             get: () => screen.width
         });
@@ -673,7 +671,7 @@ class MultiVibeChat(QMainWindow):
             get: () => screen.height - 40
         });
         
-        // User agent client hints
+        // User-Agent Client Hints
         if (navigator.userAgentData) {
             Object.defineProperty(navigator, 'userAgentData', {
                 get: () => ({
@@ -688,10 +686,10 @@ class MultiVibeChat(QMainWindow):
             });
         }
         
-        // Cleanup prototype chain
+        // Navigator prototype adjustments
         delete navigator.__proto__.webdriver;
         
-        // Console output filtering
+        // Console logging guard
         const originalLog = console.log;
         console.log = function(...args) {
             if (args.length > 0 && typeof args[0] === 'string' && args[0].includes('webdriver')) {
@@ -702,7 +700,7 @@ class MultiVibeChat(QMainWindow):
         """
         
         user_script = QWebEngineScript()
-        user_script.setSourceCode(browser_compat_script)
+        user_script.setSourceCode(environment_alignment_script)
         user_script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         user_script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         user_script.setRunsOnSubFrames(True)
