@@ -1,82 +1,212 @@
-# MultiVibeChat
+# MultiVibeChat 2
 
-![Multi Vibe Chat Screenshot](https://i.imgur.com/reviWKK.png) <!-- Replace with a real screenshot URL later -->
+![Multi Vibe Chat Screenshot](https://i.imgur.com/Gi9nMhe.jpeg) <!-- Replace with a real screenshot URL later -->
 
-A desktop application that provides a unified, tiling interface for prompting multiple AI chat services simultaneously with their native Websites, no APIs needed. Built with Python and PyQt6.
+# Multi AI Chat Desktop Client
+A PyQt6-based desktop application for managing and interacting with multiple AI chat services simultaneously in a unified interface.
+
+## Acknowledgments
+- Built with PyQt6 and QtWebEngine
+- Inspired by the need to compare AI responses efficiently
+- Inspired by mol-ai/GodMode 🫡
+- Inspired by MultiGPT, ChatHub browser extensions 🤭
+- Community contributions welcome
+
+![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![PyQt6](https://img.shields.io/badge/PyQt6-6.0+-green.svg)
+
 
 ## Features
 
--   **Multi-AI Tiling:** View and interact with ChatGPT, Claude, Grok, and Google AI Studio in a single 2x2 grid.
--   **Simultaneous Prompting:** Send a single prompt to all AIs at once with a button or a hotkey.
--   **Profile Manager:** - Easily create and switch between isolated user profiles to manage multiple accounts for each AI service, all from within the app.
--   **Individual Zoom Control:** Zoom in and out of each AI window independently using `Ctrl + Mouse Wheel`.
--   **Send Hotkey:** Use `Ctrl + Enter` in the text box to send your prompt to all services.
--   Curenntly using existing browser profile to bypass possible anti bot detection (google complaining about "unsafe browser" upon login)
+- **Multi-Panel Interface** - Chat with multiple AI services side-by-side
+- **Synchronized Prompts** - Send the same prompt to all AIs simultaneously
+- **NO APIs NEEDED** - Uses native websites, all possible with free accounts
+- **Profile Management** - Create and switch between different user profiles (automatically creates new browser profiles in working directory)
+- **Persistent Sessions** - Your login states are preserved between sessions
+- **Flexible Layouts** - Toggle between 2x2 grid and 4x1 column layouts
+- **Zoom Control** - Ctrl+scroll to adjust text size (website zoom) in each panel
+- **OAuth Support** - Handles popup-based authentication flows
+- **Developer Tools** - Built-in web inspector (Ctrl+Shift+I)
 
-## How to Run
+## Supported AI Services
 
-This project is built with Python and PyQt6.
+- ChatGPT (OpenAI)
+- Claude (Anthropic)
+- Grok (xAI)
+- Gemini AI Studio (Google)
 
-basically, write   python a.py   in command line
+## Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/multi-vibe-chat.git
-    cd multi-vibe-chat
-    ```
+### Prerequisites
 
-2.  **Install dependencies:**
-    It's recommended to use a virtual environment.
-    ```bash
-    # Create and activate a virtual environment (optional but recommended)
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+- Python 3.8 or higher
+- pip package manager
 
-    # Install required packages
-    pip install -r requirements.txt
-    ```
+### Setup
 
-3.  **Run the application:**
-    ```bash
-    python a.py
-    ```
-    The first time you run it, a `default` profile will be created. You can create and switch profiles from the control panel at the bottom.
+1. Clone this repository:
+```bash
+git clone https://github.com/yourusername/multi-ai-chat.git
+cd multi-ai-chat
+```
 
-## How to Use
+2. Install required dependencies:
+```bash
+pip install PyQt6 PyQt6-WebEngine
+```
 
--   Type your prompt in the text box at the bottom.
--   Click **"Send to All"** or press **`Ctrl + Enter`** to submit.
+3. Run the application:
+```bash
+python WORKING.py
+```
 
-## HOW TO LOGIN 
-Disclaimer: This is an advanced method and carries the risk of corrupting your profiles. The recommended method is to log in manually within the app. P
+## Usage
 
-Prerequisites:
-    Close both your main web browser (Chrome/Edge) and the Multi Vibe Chat application completely. This is critical.
-    Run Multi Vibe Chat at least once to create the empty .multi_vibe_chat_profile_default folder.
+### Basic Operation
 
-Steps:
-    Locate the Source Profile Folder (Your main browser's data):
-        Microsoft Edge:
-            Windows: C:\Users\YourName\AppData\Local\Microsoft\Edge\User Data\Default
-            macOS: ~/Library/Application Support/Microsoft Edge/Default
-        Google Chrome:
-            Windows: C:\Users\YourName\AppData\Local\Google\Chrome\User Data\Default
-            macOS: ~/Library/Application Support/Google/Chrome/Default
+1. **First Launch**: The app will open with all four AI services loaded
+2. **Login**: Click "Login Mode: OFF" to enable manual login mode, then sign in to each service. I recommend signing in 1st to google's Ai studio
+3. **Send Prompts**: Type your prompt in the text box and press `Ctrl+Enter` or click "Send to All"
+4. **Compare Responses**: View responses from all AIs simultaneously
 
-    (Note: On Windows, AppData is a hidden folder.)
+### Keyboard Shortcuts
 
-    Locate the Destination Profile Folder (Your app's data):
-        This is the folder named .multi_vibe_chat_profile_default located in your main user/home directory (e.g., C:\Users\YourName\).
+- `Ctrl+Enter` - Send prompt to all AIs
+- `Ctrl+Scroll` - Zoom in/out in any panel
+- `Alt` (hold) - Show URL bars
+- `Ctrl+Shift+I` - Open developer tools (right-click)
 
-    Copy the Key Files:
-        Navigate into the Source Folder (e.g., ...\User Data\Default).
+### Profile Management
 
-        Copy the following files and folders:
-            The Cookies file
-            The Login Data file
-            The entire Local Storage folder
-            The entire Session Storage folder
-        Paste these items directly into the Destination Folder (.multi_vibe_chat_profile_default), overwriting the empty files that are already there.
+**Creating Profiles:**
+1. Type a new profile name in the Profile dropdown
+2. Click "Switch / Create"
+3. A new window will open with the new profile
 
-    Launch Multi Vibe Chat:
-        If the versions were compatible and the files were not locked, you should now be logged in to any services you were already logged into on your main browser.
+**Switching Profiles:**
+1. Select an existing profile from the dropdown
+2. Click "Switch / Create"
+
+Profiles store separate authentication states, cookies, and settings.
+
+### Login Mode
+
+The "Login Mode" toggle allows manual interaction with websites:
+- **OFF** (default): Prompts are automatically sent to all AIs
+- **ON**: Disables automatic prompt injection, allowing you to manually interact with login pages
+- idk if this is actually true lol, AI made a summary
+
+Use Login Mode when:
+- Signing in for the first time
+- Handling two-factor authentication
+- Dealing with OAuth flows
+
+### Pop-up Authentication
+
+When services use OAuth pop-up windows (like Grok's Google sign-in):
+1. Click the sign-in button on the service
+2. A pop-up window will appear
+3. Complete the authentication (It asked me for 2FA confirm on my phone)
+4. The pop-up will auto-close when done
+
+Alternatively, use the "🔐 Sign in with Google" button for a dedicated sign-in window.
+
+## Technical Details
+
+### Browser Compatibility
+
+This application uses QtWebEngine (Chromium-based) and includes:
+- Standard Chrome user agent
+- Modern HTTP headers (sec-ch-ua, Sec-Fetch-*)
+- JavaScript compatibility layers for Chrome APIs
+- Popup window handling
+
+### Profile Storage
+
+Profiles are stored in hidden directories:
+```
+.multi_vibe_chat_profile_default/
+.multi_vibe_chat_profile_work/
+.multi_vibe_chat_profile_personal/
+```
+
+Each profile contains:
+- Cookies and session data
+- Local storage
+- Cache
+- IndexedDB data
+
+### Configuration
+
+Last used profile is stored in `.multi_vibe_chat_config.json`
+
+## Troubleshooting
+
+### "This browser is not supported" errors
+
+Some services may show browser compatibility warnings. Try:
+1. Enable "Login Mode" and sign in manually
+2. Use the dedicated sign-in dialog
+3. Update your PyQt6-WebEngine to the latest version
+
+### Sessions not persisting
+
+Ensure the profile directories have write permissions:
+```bash
+chmod -R 755 .multi_vibe_chat_profile_*
+```
+
+### Pop-ups not working
+
+If OAuth popups don't open:
+1. Check that JavaScript is enabled (it should be by default)
+2. Try using the manual "🔐 Sign in with Google" button
+3. Use Login Mode and complete authentication in the main panel
+
+## Development
+
+### Project Structure
+
+```
+├── WORKING.py              # Main application file
+├── README.md               # This file
+└── .multi_vibe_chat_*      # Profile directories (auto-generated)
+```
+
+### Code Structure
+
+- `RequestInterceptor` - Adds standard HTTP headers
+- `CustomWebEnginePage` - Handles navigation and popups
+- `CustomWebEngineView` - Main browser view with zoom support
+- `MultiVibeChat` - Main application window and logic
+
+## Privacy & Security
+
+- All data is stored locally on your machine, except for queries you are sending to AI providers, obviously
+- No telemetry or tracking
+- Sessions are isolated per profile
+- Use different profiles for different accounts
+
+**Note:** This application stores credentials locally. Ensure your computer is secure and encrypted.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the GPL-3.0 license 
+
+
+## Disclaimer
+
+This software is provided for educational and personal use. Users are responsible for ensuring their use complies with the terms of service of any third-party AI services they access through this application.
+
+## Support
+
+For issues, questions, or feature requests, please open an issue on GitHub.
+
+---
+
+**Happy AI chatting! 🤖✨**
+
