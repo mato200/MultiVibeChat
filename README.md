@@ -57,7 +57,7 @@ pip install PyQt6 PyQt6-WebEngine
 
 3. Run the application:
 ```bash
-python MVC.py
+python MVC2.py
 ```
 
 ## Usage
