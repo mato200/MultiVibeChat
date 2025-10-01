@@ -46,8 +46,8 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/multi-ai-chat.git
-cd multi-ai-chat
+git clone https://github.com/mato200/MultiVibeChat.git
+cd MultiVibeChat
 ```
 
 2. Install required dependencies:
@@ -57,7 +57,7 @@ pip install PyQt6 PyQt6-WebEngine
 
 3. Run the application:
 ```bash
-python WORKING.py
+python MVC.py
 ```
 
 ## Usage
