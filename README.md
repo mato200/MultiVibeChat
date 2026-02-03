@@ -1,4 +1,4 @@
-# MultiVibeChat 2
+# MultiVibeChat 3
 
 ![Multi Vibe Chat Screenshot](https://i.imgur.com/Gi9nMhe.jpeg) <!-- Replace with a real screenshot URL later -->
 
@@ -23,7 +23,7 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 - **NO APIs NEEDED** - Uses native websites, all possible with free accounts
 - **Profile Management** - Create and switch between different user profiles (automatically creates new browser profiles in working directory)
 - **Persistent Sessions** - Your login states are preserved between sessions
-- **Flexible Layouts** - Toggle between 2x2 grid and 4x1 column layouts
+- **Flexible Layouts** - Toggle between 2x2 grid and 4x1 or Nx1 column layouts
 - **Zoom Control** - Ctrl+scroll to adjust text size (website zoom) in each panel
 - **OAuth Support** - Handles popup-based authentication flows
 - **Developer Tools** - Built-in web inspector (Ctrl+Shift+I)
@@ -34,8 +34,11 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 - Claude (Anthropic)
 - Grok (xAI)
 - Gemini AI Studio (Google)
+- Kimi (Moonshot AI)
 
 ## Installation
+
+Either install it or just run pre-build MultiVibeChat.exe :)
 
 ### Prerequisites
 
@@ -57,7 +60,7 @@ pip install PyQt6 PyQt6-WebEngine
 
 3. Run the application:
 ```bash
-python MVC2.py
+python MVC3.py
 ```
 
 ## Usage
@@ -65,7 +68,7 @@ python MVC2.py
 ### Basic Operation
 
 1. **First Launch**: The app will open with all four AI services loaded
-2. **Login**: Click "Login Mode: OFF" to enable manual login mode, then sign in to each service. I recommend signing in 1st to google's Ai studio
+2. **Login**: Click "Login Mode" to enable manual login mode, then sign in to each service. I recommend signing in 1st to google's Ai studio
 3. **Send Prompts**: Type your prompt in the text box and press `Ctrl+Enter` or click "Send to All"
 4. **Compare Responses**: View responses from all AIs simultaneously
 
@@ -73,7 +76,7 @@ python MVC2.py
 
 - `Ctrl+Enter` - Send prompt to all AIs
 - `Ctrl+Scroll` - Zoom in/out in any panel
-- `Alt` (hold) - Show URL bars
+- `Alt` - Show URL bars
 - `Ctrl+Shift+I` - Open developer tools (right-click)
 
 ### Profile Management
@@ -81,7 +84,7 @@ python MVC2.py
 **Creating Profiles:**
 1. Type a new profile name in the Profile dropdown
 2. Click "Switch / Create"
-3. A new window will open with the new profile
+3. A new window will open with the new (browser) profile
 
 **Switching Profiles:**
 1. Select an existing profile from the dropdown
@@ -109,7 +112,7 @@ When services use OAuth pop-up windows (like Grok's Google sign-in):
 3. Complete the authentication (It asked me for 2FA confirm on my phone)
 4. The pop-up will auto-close when done
 
-Alternatively, use the "🔐 Sign in with Google" button for a dedicated sign-in window.
+Alternatively, use the "🔐 Sign in with Google" button (dont really..) for a dedicated sign-in window.
 
 ## Technical Details
 
@@ -123,7 +126,8 @@ This application uses QtWebEngine (Chromium-based) and includes:
 
 ### Profile Storage
 
-Profiles are stored in hidden directories:
+Profiles are stored in Home directory:
+E.g. C:\Users\MyName\.multi_vibe_chat_profile_default
 ```
 .multi_vibe_chat_profile_default/
 .multi_vibe_chat_profile_work/
@@ -168,7 +172,7 @@ If OAuth popups don't open:
 ### Project Structure
 
 ```
-├── WORKING.py              # Main application file
+├── MVC3.py              # Main application file
 ├── README.md               # This file
 └── .multi_vibe_chat_*      # Profile directories (auto-generated)
 ```
