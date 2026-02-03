@@ -866,29 +866,88 @@ class MultiVibeChat(QMainWindow):
         dialog.exec()
 
     def find_existing_profiles(self):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        app_data_dir = self.get_app_data_dir()
         prefix = ".multi_vibe_chat_profile_"
-        profiles = [item[len(prefix):] for item in os.listdir(script_dir) if os.path.isdir(os.path.join(script_dir, item)) and item.startswith(prefix)]
+        try:
+            profiles = [
+                item[len(prefix):]
+                for item in os.listdir(app_data_dir)
+                if os.path.isdir(os.path.join(app_data_dir, item)) and item.startswith(prefix)
+            ]
+        except FileNotFoundError:
+            profiles = []
         return sorted(profiles) if profiles else ['default']
 
     def switch_profile(self):
         new_profile_name = self.profile_combo.currentText().strip()
         if not new_profile_name or new_profile_name == self.profile_name:
             return
+
+        debug_log(f"=== Switching Profile (In-Process) ===")
+        debug_log(f"Current profile: {self.profile_name}")
+        debug_log(f"New profile: {new_profile_name}")
+
         # Save the new profile as the last used
         self.save_last_profile(new_profile_name)
-        args = [sys.executable, sys.argv[0], '--profile', new_profile_name]
-        subprocess.Popen(args)
-        self.close()
+
+        # Apply the switch without restarting the app (avoids PyInstaller temp conflicts)
+        self.apply_profile_switch(new_profile_name)
+
+    def apply_profile_switch(self, new_profile_name):
+        """Switch profiles in-process by rebuilding all browsers with a new QWebEngineProfile."""
+        debug_log("Applying profile switch in-process")
+
+        # Update profile name and window title
+        self.profile_name = new_profile_name
+        self.setWindowTitle(f"Multi Vibe Chat - Profile: {self.profile_name}")
+
+        # Clear existing browsers and containers
+        for browser_info in list(self.browsers):
+            try:
+                container = browser_info.get('container')
+                if container:
+                    container.setParent(None)
+                    container.deleteLater()
+                browser = browser_info.get('browser')
+                if browser:
+                    browser.setParent(None)
+                    browser.deleteLater()
+            except RuntimeError:
+                pass
+
+        self.browsers = []
+
+        # Clear view stack widgets
+        while self.view_stack.count() > 0:
+            item = self.view_stack.itemAt(0)
+            widget = item.widget() if item else None
+            if widget:
+                self.view_stack.removeWidget(widget)
+                widget.deleteLater()
+            else:
+                break
+
+        # Dispose old profile and create a new one
+        try:
+            if hasattr(self, 'profile') and self.profile:
+                self.profile.deleteLater()
+        except RuntimeError:
+            pass
+
+        self.handle_profile_logic()
+
+        # Rebuild browsers with the new profile
+        self.rebuild_browser_panes()
+
+        # Update profile combo list if needed
+        existing_profiles = self.find_existing_profiles()
+        if new_profile_name not in existing_profiles:
+            self.profile_combo.addItem(new_profile_name)
+        self.profile_combo.setCurrentText(new_profile_name)
 
     def get_app_data_dir(self):
         """Get the application data directory for storing profiles and configs."""
-        if hasattr(sys, '_MEIPASS'):
-            # Running from PyInstaller bundle
-            return os.path.join(os.path.expanduser("~"), ".MultiVibeChat")
-        else:
-            # Running from source - keep data in script directory
-            return os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(os.path.expanduser("~"), ".MultiVibeChat")
 
     def get_config_path(self):
         """Get path to the config file that stores the last profile."""
@@ -1237,10 +1296,30 @@ class MultiVibeChat(QMainWindow):
         user_script.setRunsOnSubFrames(True)
         self.profile.scripts().insert(user_script)
 
+def debug_log(message):
+    """Write debug messages to a log file in user's home directory"""
+    try:
+        log_path = os.path.join(os.path.expanduser("~"), ".MultiVibeChat", "debug.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a') as f:
+            from datetime import datetime
+            f.write(f"{datetime.now()}: {message}\n")
+    except:
+        pass
+
 def main():
+    debug_log(f"=== App Starting ===")
+    debug_log(f"sys.executable: {sys.executable}")
+    debug_log(f"sys.argv: {sys.argv}")
+    debug_log(f"Has _MEIPASS: {hasattr(sys, '_MEIPASS')}")
+    if hasattr(sys, '_MEIPASS'):
+        debug_log(f"_MEIPASS: {sys._MEIPASS}")
+    
     parser = argparse.ArgumentParser(description="Multi Vibe Chat")
     parser.add_argument('--profile', type=str, default=None, help='Profile name to use.')
     args = parser.parse_args()
+    
+    debug_log(f"Parsed args.profile: {args.profile}")
     
     app = QApplication(sys.argv)
     
@@ -1256,22 +1335,35 @@ def main():
         
         os.makedirs(app_data_dir, exist_ok=True)
         config_path = os.path.join(app_data_dir, ".multi_vibe_chat_config.json")
+        debug_log(f"Config path: {config_path}")
         profile_name = 'default'
         try:
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                     profile_name = config.get('last_profile', 'default')
+                    debug_log(f"Loaded profile from config: {profile_name}")
         except Exception as e:
+            debug_log(f"Error loading last profile: {e}")
             print(f"Error loading last profile: {e}")
     else:
         profile_name = args.profile
+        debug_log(f"Using profile from args: {profile_name}")
     
-    browser_app = MultiVibeChat(profile_name=profile_name)
-    # Save this profile as the last used
-    browser_app.save_last_profile(profile_name)
-    browser_app.show()
-    sys.exit(app.exec())
+    debug_log(f"Final profile_name: {profile_name}")
+    
+    try:
+        browser_app = MultiVibeChat(profile_name=profile_name)
+        # Save this profile as the last used
+        browser_app.save_last_profile(profile_name)
+        browser_app.show()
+        debug_log("App window shown successfully")
+        sys.exit(app.exec())
+    except Exception as e:
+        debug_log(f"FATAL ERROR: {e}")
+        import traceback
+        debug_log(traceback.format_exc())
+        raise
 
 if __name__ == "__main__":
     main()
