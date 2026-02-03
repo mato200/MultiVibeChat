@@ -3,6 +3,19 @@
 
 import sys
 import os
+
+# Performance: Set Chromium-specific optimization flags before any Qt imports
+# --enable-gpu-rasterization: Uses GPU for drawing, faster than CPU
+# --enable-zero-copy: Reduces memory copies for textures
+# --ignore-gpu-blocklist: Forces hardware acceleration on older/unsupported GPUs
+# --enable-parallel-downloading: Speeds up loading of JS/CSS assets
+os.environ["QTWEBENGINE_CHROME_FLAGS"] = (
+    "--enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist "
+    "--enable-features=ParallelDownloading,CanvasOoopRasterization "
+    "--disable-background-networking --disable-sync --metrics-recording-only "
+    "--wasm-tier-up --enable-webgl-draft-extensions"
+)
+
 import argparse
 import subprocess
 import shutil
@@ -15,41 +28,62 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
 from PyQt6.QtCore import QUrl, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QGuiApplication, QKeyEvent
+from PyQt6.QtGui import QAction, QGuiApplication, QKeyEvent, QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings, QWebEngineScript, QWebEngineUrlRequestInterceptor
 
+# Pre-computed header bytes for performance (avoid repeated encoding)
+_HEADER_ACCEPT_LANG = b"en-US,en;q=0.9"
+_HEADER_SEC_CH_UA = b'"Not A(Brand";v="8", "Chromium";v="131", "Google Chrome";v="131"'
+_HEADER_SEC_CH_MOBILE = b"?0"
+_HEADER_SEC_CH_PLATFORM = b'"Windows"'
+
 class RequestInterceptor(QWebEngineUrlRequestInterceptor):
-    """Custom request interceptor for adding HTTP headers"""
+    """Lightweight request interceptor - filters tracking and sets essential headers for speed"""
+    # Common tracking/telemetry domains to block for faster load
+    _BLOCK_LIST = {
+        b"google-analytics.com", b"analytics.google.com", b"sentry.io", 
+        b"intercom.io", b"intercomcdn.com", b"segment.io", b"facebook.net",
+        b"hotjar.com", b"mixpanel.com"
+    }
+
     def interceptRequest(self, info):
-        # Modern browser headers
-        info.setHttpHeader(b"Accept-Language", b"en-US,en;q=0.9")
-        info.setHttpHeader(b"Accept", b"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-        info.setHttpHeader(b"Upgrade-Insecure-Requests", b"1")
-        info.setHttpHeader(b"Sec-Fetch-Site", b"none")
-        info.setHttpHeader(b"Sec-Fetch-Mode", b"navigate")
-        info.setHttpHeader(b"Sec-Fetch-User", b"?1")
-        info.setHttpHeader(b"Sec-Fetch-Dest", b"document")
-        info.setHttpHeader(b"sec-ch-ua", b'"Not A(Brand";v="8", "Chromium";v="131", "Google Chrome";v="131"')
-        info.setHttpHeader(b"sec-ch-ua-mobile", b"?0")
-        info.setHttpHeader(b"sec-ch-ua-platform", b'"Windows"')
+        # Block telemetry/tracking to speed up page logic
+        url_host = info.requestUrl().host().lower().encode()
+        for block_domain in self._BLOCK_LIST:
+            if block_domain in url_host:
+                info.block(True)
+                return
+
+        # Only set critical headers that affect site behavior
+        info.setHttpHeader(b"Accept-Language", _HEADER_ACCEPT_LANG)
+        info.setHttpHeader(b"sec-ch-ua", _HEADER_SEC_CH_UA)
+        info.setHttpHeader(b"sec-ch-ua-mobile", _HEADER_SEC_CH_MOBILE)
+        info.setHttpHeader(b"sec-ch-ua-platform", _HEADER_SEC_CH_PLATFORM)
+
+# Class-level user agent to avoid repeated string creation
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
 
 class CustomWebEnginePage(QWebEnginePage):
+    # Track if user agent was set on this profile to avoid redundant calls
+    _ua_set_profiles = set()
+    
     def __init__(self, profile, parent=None):
         super().__init__(profile, parent)
-        # Current Chrome user agent string
-        user_agent = (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/131.0.0.0 Safari/537.36"
-        )
-        self.profile().setHttpUserAgent(user_agent)
+        # Only set user agent once per profile
+        profile_id = id(profile)
+        if profile_id not in CustomWebEnginePage._ua_set_profiles:
+            profile.setHttpUserAgent(_USER_AGENT)
+            CustomWebEnginePage._ua_set_profiles.add(profile_id)
         self._popup_windows = []
     
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        # Reduce console noise
-        if message and ('webdriver' in message.lower() or 'automation' in message.lower()):
-            return
-        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
+        # Silence console messages entirely for performance
+        # Prevents expensive string passing between processes
+        pass
     
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         # Allow all navigation including popups
@@ -166,6 +200,12 @@ class PromptTextEdit(QTextEdit):
         else: super().keyPressEvent(event)
 
 class MultiVibeChat(QMainWindow):
+    # Pre-computed list of domains for preconnect (speeds up initial connections)
+    _PRECONNECT_DOMAINS = [
+        'chatgpt.com', 'claude.ai', 'x.com', 'aistudio.google.com', 'kimi.com',
+        'cdn.oaistatic.com', 'cdn.openai.com'  # Common CDNs
+    ]
+    
     def __init__(self, profile_name='default'):
         super().__init__()
         self.profile_name = profile_name
@@ -173,6 +213,7 @@ class MultiVibeChat(QMainWindow):
         self.is_grid_layout = False  # Default to Nx1 horizontal layout
         self.url_bars_visible = False  # Track URL bar visibility for Alt toggle
         self.broadcast_enabled = True  # Toggle for unified prompt delivery
+        self._pending_loads = {}  # Track deferred browser loads
         self.all_targets = {
             'ChatGPT': 'https://chatgpt.com/', 
             'Claude': 'https://claude.ai/new',
@@ -272,6 +313,9 @@ class MultiVibeChat(QMainWindow):
         self.setCentralWidget(self.main_container)
 
         self.handle_profile_logic()
+        
+        # Trigger preconnect to AI domains for faster initial load
+        self._preconnect_domains()
 
         # Create browser container that will be rebuilt when AI selection changes
         self.browser_container = QWidget()
@@ -375,7 +419,10 @@ class MultiVibeChat(QMainWindow):
         # Do nothing on Alt release - we toggle on press now
         super().keyReleaseEvent(event)
 
-    def create_browser_pane(self, name):
+    def create_browser_pane(self, name, delay_ms=0):
+        """Create a browser pane, optionally with delayed load for staggered initialization"""
+        from PyQt6.QtCore import QTimer
+        
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -389,7 +436,17 @@ class MultiVibeChat(QMainWindow):
         browser = CustomWebEngineView()
         page = CustomWebEnginePage(self.profile, browser)
         browser.setPage(page)
-        browser.load(QUrl(self.targets[name]))
+        
+        # Set black background to avoid white flash during page load
+        page.setBackgroundColor(QColor(0, 0, 0))
+        browser.setStyleSheet("background-color: #000000;")
+        
+        # Stagger page loads to avoid overwhelming the system
+        target_url = self.targets[name]
+        if delay_ms > 0:
+            QTimer.singleShot(delay_ms, lambda: browser.load(QUrl(target_url)))
+        else:
+            browser.load(QUrl(target_url))
         
         # Update URL bar when page URL changes
         browser.urlChanged.connect(lambda url, bar=url_bar: bar.setText(url.toString()))
@@ -403,6 +460,31 @@ class MultiVibeChat(QMainWindow):
         browser_info = {'name': name, 'browser': browser, 'url_bar': url_bar, 'container': container}
         self.browsers.append(browser_info)
         return container
+    
+    def _preconnect_domains(self):
+        """Warm up connections to AI domains for faster page loads"""
+        from PyQt6.QtCore import QTimer
+        # Use a hidden browser to trigger DNS prefetch and connection warmup
+        preconnect_html = '<html><head>'
+        for domain in self._PRECONNECT_DOMAINS:
+            preconnect_html += f'<link rel="preconnect" href="https://{domain}" crossorigin>'
+            preconnect_html += f'<link rel="dns-prefetch" href="https://{domain}">'
+        preconnect_html += '</head><body></body></html>'
+        
+        # Create a temporary hidden view to execute preconnect
+        self._preconnect_view = QWebEngineView()
+        self._preconnect_view.setHtml(preconnect_html)
+        # Clean up after a short delay
+        QTimer.singleShot(3000, self._cleanup_preconnect)
+    
+    def _cleanup_preconnect(self):
+        """Clean up preconnect resources"""
+        if hasattr(self, '_preconnect_view'):
+            try:
+                self._preconnect_view.deleteLater()
+            except RuntimeError:
+                pass
+            del self._preconnect_view
     
     def navigate_to_url(self, browser, url_bar):
         """Navigate browser to URL entered in the URL bar"""
@@ -463,11 +545,13 @@ class MultiVibeChat(QMainWindow):
         
         self.browsers = browsers_to_keep
         
-        # Add browsers for newly selected AIs
-        for ai_name in ais_to_add:
+        # Add browsers for newly selected AIs with staggered loading
+        # Delay each subsequent browser by 150ms to avoid network/CPU contention
+        delay_increment = 150
+        for idx, ai_name in enumerate(ais_to_add):
             if ai_name in self.targets:
-                # Create new browser pane
-                self.create_browser_pane(ai_name)
+                # Create new browser pane with staggered delay
+                self.create_browser_pane(ai_name, delay_ms=idx * delay_increment)
                 # Note: create_browser_pane already appends to self.browsers
         
         # Clear view stack
@@ -1055,7 +1139,14 @@ class MultiVibeChat(QMainWindow):
         
         self.profile = QWebEngineProfile(f"persistent-profile-{self.profile_name}", self)
         self.profile.setPersistentStoragePath(current_path)
+        # Enable and tune disk cache for faster page loads
+        cache_path = os.path.join(current_path, "Cache")
+        self.profile.setCachePath(cache_path)
+        self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        # 512 MB cache (in bytes)
+        self.profile.setHttpCacheMaximumSize(512 * 1024 * 1024)
         self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
+        self.profile.setSpellCheckEnabled(False)
         
         # Language settings
         self.profile.setHttpAcceptLanguage("en-US,en;q=0.9")
@@ -1076,224 +1167,39 @@ class MultiVibeChat(QMainWindow):
         settings.setAttribute(QWebEngineSettings.WebAttribute.AllowWindowActivationFromJavaScript, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.DnsPrefetchEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.ScrollAnimatorEnabled, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.XSSAuditingEnabled, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.XSSAuditingEnabled, False)  # Disable for speed
+        settings.setAttribute(QWebEngineSettings.WebAttribute.ErrorPageEnabled, False)  # Faster error handling
+        settings.setAttribute(QWebEngineSettings.WebAttribute.FocusOnNavigationEnabled, False)  # Reduce focus overhead
+        settings.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, False)  # Not needed
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, True)  # Prevent autoplay load
+        settings.setAttribute(QWebEngineSettings.WebAttribute.HyperlinkAuditingEnabled, False)  # Disable PING requests
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, False)  # Not needed for chat
         
-        # Align browser runtime configuration with desktop defaults
-        environment_alignment_script = """
-        // Normalize browser API surface
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-        
-        // Provide expected plugin descriptors
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => {
-                return [
-                    {
-                        0: {type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format", enabledPlugin: Plugin},
-                        description: "Portable Document Format",
-                        filename: "internal-pdf-viewer",
-                        length: 1,
-                        name: "Chrome PDF Plugin"
-                    },
-                    {
-                        0: {type: "application/pdf", suffixes: "pdf", description: "", enabledPlugin: Plugin},
-                        description: "",
-                        filename: "mhjfbmdgcfjbbpaeojofohoefgiehjai",
-                        length: 1,
-                        name: "Chrome PDF Viewer"
-                    },
-                    {
-                        0: {type: "application/x-nacl", suffixes: "", description: "Native Client Executable", enabledPlugin: Plugin},
-                        1: {type: "application/x-pnacl", suffixes: "", description: "Portable Native Client Executable", enabledPlugin: Plugin},
-                        description: "",
-                        filename: "internal-nacl-plugin",
-                        length: 2,
-                        name: "Native Client"
-                    }
-                ];
-            }
-        });
-        
-        // Language configuration
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['en-US', 'en']
-        });
-        
-        // Populate chrome.runtime namespace with standard values
-        window.chrome = {
-            app: {
-                isInstalled: false,
-                InstallState: {
-                    DISABLED: 'disabled',
-                    INSTALLED: 'installed',
-                    NOT_INSTALLED: 'not_installed'
-                },
-                RunningState: {
-                    CANNOT_RUN: 'cannot_run',
-                    READY_TO_RUN: 'ready_to_run',
-                    RUNNING: 'running'
-                }
-            },
-            runtime: {
-                OnInstalledReason: {
-                    CHROME_UPDATE: 'chrome_update',
-                    INSTALL: 'install',
-                    SHARED_MODULE_UPDATE: 'shared_module_update',
-                    UPDATE: 'update'
-                },
-                OnRestartRequiredReason: {
-                    APP_UPDATE: 'app_update',
-                    OS_UPDATE: 'os_update',
-                    PERIODIC: 'periodic'
-                },
-                PlatformArch: {
-                    ARM: 'arm',
-                    ARM64: 'arm64',
-                    MIPS: 'mips',
-                    MIPS64: 'mips64',
-                    X86_32: 'x86-32',
-                    X86_64: 'x86-64'
-                },
-                PlatformNaclArch: {
-                    ARM: 'arm',
-                    MIPS: 'mips',
-                    MIPS64: 'mips64',
-                    X86_32: 'x86-32',
-                    X86_64: 'x86-64'
-                },
-                PlatformOs: {
-                    ANDROID: 'android',
-                    CROS: 'cros',
-                    LINUX: 'linux',
-                    MAC: 'mac',
-                    OPENBSD: 'openbsd',
-                    WIN: 'win'
-                },
-                RequestUpdateCheckStatus: {
-                    NO_UPDATE: 'no_update',
-                    THROTTLED: 'throttled',
-                    UPDATE_AVAILABLE: 'update_available'
-                }
-            },
-            csi: function() {},
-            loadTimes: function() {}
-        };
-        
-        // Permissions API behavior
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-            parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-        );
-        
-        // Hardware profile
-        Object.defineProperty(navigator, 'hardwareConcurrency', {
-            get: () => 8
-        });
-        
-        // Memory profile
-        Object.defineProperty(navigator, 'deviceMemory', {
-            get: () => 8
-        });
-        
-        // Platform identifier
-        Object.defineProperty(navigator, 'platform', {
-            get: () => 'Win32'
-        });
-        
-        // Vendor metadata
-        Object.defineProperty(navigator, 'vendor', {
-            get: () => 'Google Inc.'
-        });
-        
-        // Network information
-        Object.defineProperty(navigator, 'connection', {
-            get: () => ({
-                effectiveType: '4g',
-                rtt: 50,
-                downlink: 10,
-                saveData: false
-            })
-        });
-        
-        // Battery API shim
-        if (navigator.getBattery) {
-            const originalGetBattery = navigator.getBattery;
-            navigator.getBattery = function() {
-                return Promise.resolve({
-                    charging: true,
-                    chargingTime: 0,
-                    dischargingTime: Infinity,
-                    level: 1
-                });
-            };
-        }
-        
-        // Preserve native function signatures
-        const originalToString = Function.prototype.toString;
-        Function.prototype.toString = function() {
-            if (this === navigator.getBattery) {
-                return 'function getBattery() { [native code] }';
-            }
-            return originalToString.call(this);
-        };
-        
-        // WebGL rendering info
-        const getParameter = WebGLRenderingContext.prototype.getParameter;
-        WebGLRenderingContext.prototype.getParameter = function(parameter) {
-            if (parameter === 37445) {
-                return 'Intel Inc.';
-            }
-            if (parameter === 37446) {
-                return 'Intel(R) UHD Graphics 630';
-            }
-            return getParameter.call(this, parameter);
-        };
-        
-        // Screen metrics
-        Object.defineProperty(screen, 'availWidth', {
-            get: () => screen.width
-        });
-        Object.defineProperty(screen, 'availHeight', {
-            get: () => screen.height - 40
-        });
-        
-        // User-Agent Client Hints
-        if (navigator.userAgentData) {
-            Object.defineProperty(navigator, 'userAgentData', {
-                get: () => ({
-                    brands: [
-                        { brand: "Not A(Brand", version: "8" },
-                        { brand: "Chromium", version: "131" },
-                        { brand: "Google Chrome", version: "131" }
-                    ],
-                    mobile: false,
-                    platform: "Windows"
-                })
-            });
-        }
-        
-        // Navigator prototype adjustments
-        delete navigator.__proto__.webdriver;
-        
-        // Console logging guard
-        const originalLog = console.log;
-        console.log = function(...args) {
-            if (args.length > 0 && typeof args[0] === 'string' && args[0].includes('webdriver')) {
-                return;
-            }
-            return originalLog.apply(console, args);
-        };
-        """
+        # Minimized environment script - only essential properties for AI sites
+        # Reduces JS parsing overhead on every page load
+        environment_alignment_script = """(function(){
+Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
+Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});
+Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>8});
+Object.defineProperty(navigator,'deviceMemory',{get:()=>8});
+Object.defineProperty(navigator,'platform',{get:()=>'Win32'});
+Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});
+window.chrome={app:{isInstalled:false},runtime:{},csi:function(){},loadTimes:function(){}};
+try{delete navigator.__proto__.webdriver}catch(e){}
+})();"""
         
         user_script = QWebEngineScript()
         user_script.setSourceCode(environment_alignment_script)
         user_script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         user_script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        user_script.setRunsOnSubFrames(True)
+        # Inject only into main frames to reduce per-frame overhead
+        user_script.setRunsOnSubFrames(False)
         self.profile.scripts().insert(user_script)
 
 def debug_log(message):
