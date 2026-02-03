@@ -21,7 +21,7 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 - **Multi-Panel Interface** - Chat with multiple AI services side-by-side
 - **Synchronized Prompts** - Send the same prompt to all AIs simultaneously
 - **NO APIs NEEDED** - Uses native websites, all possible with free accounts
-- **Profile Management** - Create and switch between different user profiles (automatically creates new browser profiles in working directory)
+- **Profile Management** - Create and switch between different user profiles (automatically creates new browser profiles in "C:\Users\YourUsername\.MultiVibeChat" directory)
 - **Persistent Sessions** - Your login states are preserved between sessions
 - **Flexible Layouts** - Toggle between 2x2 grid and 4x1 or Nx1 column layouts
 - **Zoom Control** - Ctrl+scroll to adjust text size (website zoom) in each panel
