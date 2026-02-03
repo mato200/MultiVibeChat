@@ -1,6 +1,6 @@
 # MultiVibeChat 3
 
-![Multi Vibe Chat Screenshot](https://i.imgur.com/Gi9nMhe.jpeg) <!-- Replace with a real screenshot URL later -->
+![Multi Vibe Chat Screenshot](https://i.imgur.com/CizzWXZ.jpeg) <!-- Replace with a real screenshot URL later -->
 
 # Multi AI Chat Desktop Client
 A PyQt6-based desktop application for managing and interacting with multiple AI chat services simultaneously in a unified interface.
