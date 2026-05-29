@@ -198,11 +198,16 @@ class PromptTextEdit(QTextEdit):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.ctrlEnterPressed.emit()
         else: super().keyPressEvent(event)
+        
+    def insertFromMimeData(self, source):
+        if source.hasText():
+            self.insertPlainText(source.text())
 
 class MultiVibeChat(QMainWindow):
     # Pre-computed list of domains for preconnect (speeds up initial connections)
     _PRECONNECT_DOMAINS = [
-        'chatgpt.com', 'claude.ai', 'x.com', 'aistudio.google.com', 'kimi.com',
+        'chatgpt.com', 'claude.ai', 'grok.com', 'aistudio.google.com', 'kimi.com',
+        'chat.qwen.ai', 'chat.z.ai',
         'cdn.oaistatic.com', 'cdn.openai.com'  # Common CDNs
     ]
     
@@ -217,16 +222,20 @@ class MultiVibeChat(QMainWindow):
         self.all_targets = {
             'ChatGPT': 'https://chatgpt.com/', 
             'Claude': 'https://claude.ai/new',
-            'Grok': 'https://x.com/i/grok', 
+            'Grok': 'https://grok.com/', 
             'AI Studio': 'https://aistudio.google.com/prompts/new_chat',
-            'Kimi K2': 'https://www.kimi.com/en'
+            'Kimi K2': 'https://www.kimi.com/en',
+            'Qwen': 'https://chat.qwen.ai/',
+            'Z AI': 'https://chat.z.ai/',
+            'Gemini': 'https://gemini.google.com/app',
+            'DeepSeek': 'https://chat.deepseek.com/'
         }
-        self.enabled_ais = self.load_enabled_ais()  # Load saved AI selection
-        self.targets = {k: v for k, v in self.all_targets.items() if k in self.enabled_ais}
+        self.enabled_ais = self.load_enabled_ais()  # Load saved AI selection (list of dicts)
+        self.rebuild_targets_from_enabled()
         self.prompt_templates = {
             'ChatGPT': """var input = document.querySelector('div#prompt-textarea[contenteditable="true"]'); if (input) {{ input.innerHTML = '<p>{prompt}</p>'; input.dispatchEvent(new Event('input', {{ bubbles: true }})); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[data-testid="send-button"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
             'Claude': """var input = document.querySelector('div.ProseMirror[contenteditable="true"]'); if (input) {{ input.innerHTML = '<p>{prompt}</p>'; input.dispatchEvent(new Event('input', {{ bubbles: true }})); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[aria-label="Send message"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
-            'Grok': """var input = document.querySelector('textarea[placeholder="Ask anything"]'); if (input) {{ input.focus(); document.execCommand('insertText', false, `{prompt}`); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[aria-label="Grok something"]'); if ((btn && !btn.disabled) || attempts > 30) {{ if (btn && !btn.disabled) btn.click(); clearInterval(interval); }} attempts++; }}, 100); }}""",
+            'Grok': """var input = document.querySelector('textarea[placeholder="Ask anything"]') || document.querySelector('textarea'); if (input) {{ input.focus(); document.execCommand('insertText', false, `{prompt}`); let attempts = 0; const interval = setInterval(() => {{ const btn = document.querySelector('button[data-testid="chat-submit"]') || document.querySelector('button[aria-label="Submit"]') || document.querySelector('button[aria-label="Grok something"]') || document.querySelector('button[aria-label="Send message"]') || document.querySelector('button[aria-label*="send" i]'); if (btn && !btn.disabled && window.getComputedStyle(btn).display !== 'none') {{ btn.click(); clearInterval(interval); }} else if (attempts > 30) {{ input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }})); clearInterval(interval); }} attempts++; }}, 100); }}""",
             'AI Studio': """
             // Try multiple selectors for Google AI Studio input field
             var input = document.querySelector('ms-autosize-textarea textarea') ||
@@ -299,9 +308,135 @@ class MultiVibeChat(QMainWindow):
                     attempts++;
                 }}, 100);
             }}
+            """,
+            'Qwen': """
+            var input = document.querySelector('textarea.message-input-textarea') || document.querySelector('textarea');
+            if (input) {{
+                input.focus();
+                
+                // React workaround for input value
+                let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+                if (nativeInputValueSetter) {{
+                    nativeInputValueSetter.call(input, `{prompt}`);
+                }} else {{
+                    input.value = `{prompt}`;
+                }}
+                
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                
+                let attempts = 0;
+                const interval = setInterval(() => {{
+                    var btn = document.querySelector('.message-input-right-button-send .ant-dropdown-trigger') || 
+                              document.querySelector('.message-input-right-button-send > div > div') ||
+                              document.querySelector('button[aria-label*="send"]') || 
+                              document.querySelector('button[class*="send"]');
+                    if (btn && window.getComputedStyle(btn).display !== 'none') {{
+                        btn.click();
+                        clearInterval(interval);
+                    }} else if (attempts > 30) {{
+                        input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
+                        clearInterval(interval);
+                    }}
+                    attempts++;
+                }}, 100);
+            }}
+            """,
+            'Z AI': """
+            var input = document.querySelector('textarea');
+            if (input) {{
+                input.focus();
+                input.value = `{prompt}`;
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                let attempts = 0;
+                const interval = setInterval(() => {{
+                    var btn = document.querySelector('button[aria-label*="send"]') || document.querySelector('button[class*="send"]');
+                    if (btn && !btn.disabled) {{
+                        btn.click();
+                        clearInterval(interval);
+                    }} else if (attempts > 30) {{
+                        input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
+                        clearInterval(interval);
+                    }}
+                    attempts++;
+                }}, 100);
+            }}
+            """,
+            'Gemini': """
+            // Target Gemini's Quill/Rich text editor input
+            var input = document.querySelector('.ql-editor[contenteditable="true"]') || 
+                        document.querySelector('rich-textarea div[contenteditable="true"]') || 
+                        document.querySelector('div[aria-label="Enter a prompt for Gemini"]');
+                        
+            if (input) {{
+                input.focus();
+                
+                // Rich text editors ignore .value changes. We must select the content 
+                // and use execCommand so the site's internal React/Angular state registers it.
+                var sel = window.getSelection();
+                var range = document.createRange();
+                range.selectNodeContents(input);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand('insertText', false, `{prompt}`);
+                
+                let attempts = 0;
+                const interval = setInterval(() => {{
+                    // Target the Material Design send button
+                    var btn = document.querySelector('button.send-button') || 
+                              document.querySelector('button[aria-label="Send message"]');
+                              
+                    // Gemini uses aria-disabled="true" instead of standard HTML disabled properties
+                    if (btn && btn.getAttribute('aria-disabled') !== 'true' && !btn.disabled) {{
+                        btn.click();
+                        clearInterval(interval);
+                    }} else if (attempts > 30) {{
+                        // Timeout safety
+                        clearInterval(interval);
+                    }}
+                    attempts++;
+                }}, 100);
+            }}
+            """,
+            'DeepSeek': """
+            var input = document.querySelector('textarea.ds-scroll-area') || document.querySelector('textarea[placeholder*="DeepSeek"]') || document.querySelector('textarea');
+            if (input) {{
+                input.focus();
+                let nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+                if (nativeInputValueSetter) {{ nativeInputValueSetter.call(input, `{prompt}`); }} 
+                else {{ input.value = `{prompt}`; }}
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                let attempts = 0;
+                const interval = setInterval(() => {{
+                    var btns = Array.from(document.querySelectorAll('div.ds-icon-button[role="button"]:not(.ds-icon-button--disabled)'));
+                    var sendBtn = btns.find(b => b.querySelector('svg') && b.parentNode && b.parentNode.style.width === 'fit-content');
+                    if (sendBtn) {{ sendBtn.click(); clearInterval(interval); }}
+                    else if (attempts > 30) {{
+                        input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
+                        clearInterval(interval);
+                    }}
+                    attempts++;
+                }}, 100);
+            }}
             """
         }
         self.init_ui()
+
+    def rebuild_targets_from_enabled(self):
+        """Update active targets dictionary from enabled settings"""
+        self.targets = {}
+        self.target_bases = {}
+        for inst in self.enabled_ais:
+            if inst == 'Extra Duplicate':
+                base = getattr(self, 'extra_ai_choice', 'ChatGPT')
+                target_key = f"Extra Duplicate: {base}"
+                self.targets[target_key] = self.all_targets[base]
+                self.target_bases[target_key] = base
+            elif inst in self.all_targets:
+                self.targets[inst] = self.all_targets[inst]
+                self.target_bases[inst] = inst
 
     def init_ui(self):
         self.setWindowTitle(f"Multi Vibe Chat - Profile: {self.profile_name}")
@@ -341,19 +476,34 @@ class MultiVibeChat(QMainWindow):
         
         # --- FIX: Replaced fixed pixel height with dynamic, font-based height ---
         font_metrics = self.prompt_text.fontMetrics()
-        # Set height to be roughly 2.5 lines of text plus a small margin for padding
+        # Set height to be roughly 4.5 lines of text plus a small margin for padding
         line_height = font_metrics.height()
-        self.prompt_text.setFixedHeight(int(line_height * 2.5) + 6)
+        self.prompt_text.setFixedHeight(int(line_height * 4.5) + 6)
 
         main_control_layout.addWidget(self.prompt_text, 1)
 
         right_panel = QWidget()
-        right_panel_layout = QVBoxLayout(right_panel)
+        right_panel_layout = QHBoxLayout(right_panel)
         right_panel_layout.setContentsMargins(0, 0, 0, 0)
         right_panel_layout.setSpacing(4) 
 
-        top_button_layout = QHBoxLayout()
-        send_btn, refresh_btn = QPushButton("Send to All"), QPushButton("Refresh All")
+        send_btn = QPushButton("Send to All")
+        from PyQt6.QtWidgets import QSizePolicy
+        send_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        send_btn.setMinimumHeight(50)
+        font = send_btn.font()
+        font.setBold(True)
+        send_btn.setFont(font)
+        
+        right_panel_layout.addWidget(send_btn)
+
+        right_panel_vbox = QVBoxLayout()
+        right_panel_vbox.setSpacing(4)
+
+        from PyQt6.QtWidgets import QGridLayout
+        top_button_layout = QGridLayout()
+        refresh_btn = QPushButton("Refresh All")
+        
         self.layout_switch_btn = QPushButton("Switch to Grid")
         self.focus_mode_btn = QPushButton("LOG IN MODE: OFF")
         self.focus_mode_btn.setCheckable(True)
@@ -362,14 +512,18 @@ class MultiVibeChat(QMainWindow):
         google_signin_btn.setStyleSheet("background-color: #808080; color: white; font-weight: bold;")
         ai_select_btn = QPushButton("🤖 Select AIs")
         ai_select_btn.setStyleSheet("background-color: #9C27B0; color: white; font-weight: bold;")
-        top_button_layout.addWidget(send_btn)
-        top_button_layout.addWidget(refresh_btn)
-        top_button_layout.addWidget(self.layout_switch_btn)
-        top_button_layout.addWidget(self.focus_mode_btn)
-        top_button_layout.addWidget(ai_select_btn)
-        top_button_layout.addWidget(google_signin_btn)
+        
+        # Row 0
+        top_button_layout.addWidget(self.layout_switch_btn, 0, 0)
+        top_button_layout.addWidget(self.focus_mode_btn, 0, 1)
+        top_button_layout.addWidget(ai_select_btn, 0, 2)
+        # Row 1
+        top_button_layout.addWidget(refresh_btn, 1, 0)
+        top_button_layout.addWidget(google_signin_btn, 1, 1, 1, 2)
 
         profile_bar_layout = QHBoxLayout()
+        profile_bar_layout.addStretch()  # Add stretch before elements to push them to the right
+
         self.profile_combo = QComboBox()
         self.profile_combo.setEditable(True)
         self.profile_combo.setPlaceholderText("Type new name to create...")
@@ -380,12 +534,15 @@ class MultiVibeChat(QMainWindow):
             self.profile_combo.setCurrentText(self.profile_name)
 
         switch_profile_btn = QPushButton("Switch / Create")
-        profile_bar_layout.addWidget(QLabel("Profile:"))
+        profile_label = QLabel("Profile:")
+        profile_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        profile_bar_layout.addWidget(profile_label)
         profile_bar_layout.addWidget(self.profile_combo)
         profile_bar_layout.addWidget(switch_profile_btn)
         
-        right_panel_layout.addLayout(top_button_layout)
-        right_panel_layout.addLayout(profile_bar_layout)
+        right_panel_vbox.addLayout(top_button_layout)
+        right_panel_vbox.addLayout(profile_bar_layout)
+        right_panel_layout.addLayout(right_panel_vbox)
         main_control_layout.addWidget(right_panel)
 
         send_btn.clicked.connect(self.broadcast_prompts)
@@ -796,7 +953,8 @@ class MultiVibeChat(QMainWindow):
 
     def open_ai_selection(self):
         """Open dialog to select which AIs to display"""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QPushButton, QLabel, QHBoxLayout
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QPushButton, QLabel, QHBoxLayout, QComboBox
+        from PyQt6.QtWidgets import QMessageBox
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Select AI Assistants")
@@ -817,6 +975,21 @@ class MultiVibeChat(QMainWindow):
             checkbox.setStyleSheet("padding: 5px; font-size: 14px;")
             checkboxes[ai_name] = checkbox
             layout.addWidget(checkbox)
+            
+        # Extra duplicate layout
+        extra_layout = QHBoxLayout()
+        extra_checkbox = QCheckBox("Extra Duplicate:")
+        extra_checkbox.setStyleSheet("padding: 5px; font-size: 14px;")
+        extra_checkbox.setChecked('Extra Duplicate' in self.enabled_ais)
+        
+        extra_combo = QComboBox()
+        extra_combo.addItems(list(self.all_targets.keys()))
+        if hasattr(self, 'extra_ai_choice') and self.extra_ai_choice in self.all_targets:
+            extra_combo.setCurrentText(self.extra_ai_choice)
+            
+        extra_layout.addWidget(extra_checkbox)
+        extra_layout.addWidget(extra_combo)
+        layout.addLayout(extra_layout)
         
         # Buttons
         btn_layout = QHBoxLayout()
@@ -833,20 +1006,31 @@ class MultiVibeChat(QMainWindow):
         layout.addLayout(btn_layout)
         
         # Button actions
-        select_all_btn.clicked.connect(lambda: [cb.setChecked(True) for cb in checkboxes.values()])
-        deselect_all_btn.clicked.connect(lambda: [cb.setChecked(False) for cb in checkboxes.values()])
+        def select_all():
+            for cb in checkboxes.values(): cb.setChecked(True)
+            extra_checkbox.setChecked(True)
+            
+        def deselect_all():
+            for cb in checkboxes.values(): cb.setChecked(False)
+            extra_checkbox.setChecked(False)
+            
+        select_all_btn.clicked.connect(select_all)
+        deselect_all_btn.clicked.connect(deselect_all)
         cancel_btn.clicked.connect(dialog.reject)
         
         def apply_selection():
             selected = [name for name, cb in checkboxes.items() if cb.isChecked()]
+            if extra_checkbox.isChecked():
+                selected.append('Extra Duplicate')
+                
             if not selected:
-                from PyQt6.QtWidgets import QMessageBox
                 QMessageBox.warning(dialog, "Warning", "Please select at least one AI assistant.")
                 return
             
             self.enabled_ais = selected
+            self.extra_ai_choice = extra_combo.currentText()
             self.save_enabled_ais()
-            self.targets = {k: v for k, v in self.all_targets.items() if k in self.enabled_ais}
+            self.rebuild_targets_from_enabled()
             self.rebuild_browser_panes()
             dialog.accept()
         
@@ -862,14 +1046,24 @@ class MultiVibeChat(QMainWindow):
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
                     config = json.load(f)
+                    self.extra_ai_choice = config.get('extra_ai_choice', 'ChatGPT')
                     enabled = config.get('enabled_ais', None)
                     if enabled:
-                        # Filter to only include valid AI names
-                        return [ai for ai in enabled if ai in self.all_targets]
+                        valid_names = list(self.all_targets.keys()) + ['Extra Duplicate']
+                        migrated_list = []
+                        for item in enabled:
+                            if isinstance(item, str) and item in valid_names:
+                                migrated_list.append(item)
+                            elif isinstance(item, dict) and "base" in item:
+                                if item["base"] in self.all_targets and item["base"] not in migrated_list:
+                                    migrated_list.append(item["base"])
+                        if migrated_list:
+                            return migrated_list
         except Exception as e:
             print(f"Error loading enabled AIs: {e}")
-        # Default: all AIs enabled
-        return list(self.all_targets.keys())
+        
+        self.extra_ai_choice = 'ChatGPT'
+        return ['ChatGPT', 'Claude', 'Gemini']
 
     def save_enabled_ais(self):
         """Save the enabled AI list to config file."""
@@ -877,9 +1071,14 @@ class MultiVibeChat(QMainWindow):
             config_path = self.get_config_path()
             config = {}
             if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                except json.JSONDecodeError:
+                    pass
             config['enabled_ais'] = self.enabled_ais
+            if hasattr(self, 'extra_ai_choice'):
+                config['extra_ai_choice'] = self.extra_ai_choice
             with open(config_path, 'w') as f:
                 json.dump(config, f)
         except Exception as e:
@@ -907,9 +1106,10 @@ class MultiVibeChat(QMainWindow):
         
         for ai_info in self.browsers:
             name = ai_info['name']
+            base = self.target_bases.get(name, name)
             browser = ai_info['browser']
-            if name in self.prompt_templates:
-                browser.page().runJavaScript(self.prompt_templates[name].format(prompt=js_safe_prompt))
+            if base in self.prompt_templates:
+                browser.page().runJavaScript(self.prompt_templates[base].format(prompt=js_safe_prompt))
                 
         self.prompt_text.clear()
 
@@ -1055,7 +1255,14 @@ class MultiVibeChat(QMainWindow):
         """Save the current profile as the last used."""
         try:
             config_path = self.get_config_path()
-            config = {'last_profile': profile_name}
+            config = {}
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                except json.JSONDecodeError:
+                    pass
+            config['last_profile'] = profile_name
             with open(config_path, 'w') as f:
                 json.dump(config, f)
         except Exception as e:
@@ -1231,13 +1438,8 @@ def main():
     
     # If no profile specified via command line, load the last used profile
     if args.profile is None:
-        # Get app data directory consistently
-        if hasattr(sys, '_MEIPASS'):
-            # Running from PyInstaller bundle
-            app_data_dir = os.path.join(os.path.expanduser("~"), ".MultiVibeChat")
-        else:
-            # Running from source - keep data in script directory
-            app_data_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get app data directory consistently matching MultiVibeChat class
+        app_data_dir = os.path.join(os.path.expanduser("~"), ".MultiVibeChat")
         
         os.makedirs(app_data_dir, exist_ok=True)
         config_path = os.path.join(app_data_dir, ".multi_vibe_chat_config.json")
