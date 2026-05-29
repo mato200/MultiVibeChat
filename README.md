@@ -33,12 +33,16 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 - ChatGPT (OpenAI)
 - Claude (Anthropic)
 - Grok (xAI)
-- Gemini AI Studio (Google)
+- Gemini (app)
+- Gemini (AI Studio)
 - Kimi (Moonshot AI)
+- Qwen (Alibaba)
+- GLM (Z.ai)
+- Deepseek
 
 ## Installation
 
-Either install it or just run pre-build MultiVibeChat.exe :)
+Either install it or just run pre-build **MultiVibeChat.exe** :)
 
 ### Prerequisites
 
@@ -67,10 +71,11 @@ python MVC3.py
 
 ### Basic Operation
 
-1. **First Launch**: The app will open with all four AI services loaded
-2. **Login**: Click "Login Mode" to enable manual login mode, then sign in to each service. I recommend signing in 1st to google's Ai studio
-3. **Send Prompts**: Type your prompt in the text box and press `Ctrl+Enter` or click "Send to All"
-4. **Compare Responses**: View responses from all AIs simultaneously
+1. **First Launch**: The app will open with all  AI services loaded
+2. **Login**: Click "Login Mode" to enable manual login mode, then sign in to each service. I recommend signing in 1st with your google account into one window - e.g. Gemini,
+   and then easily quickly logging in into other LLM Websites though that same cached Google login account. (Basically the same as you do in a normal browser) Then you can put log-in-mode back to off
+4. **Send Prompts**: Type your prompt in the text box and press `Ctrl+Enter` or click "Send to All"
+5. **Compare Responses**: View responses from all AIs simultaneously
 
 ### Keyboard Shortcuts
 
