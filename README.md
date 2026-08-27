@@ -38,6 +38,7 @@ A PyQt6-based desktop application for managing and interacting with multiple AI 
 - Kimi (Moonshot AI)
 - Qwen (Alibaba)
 - GLM (Z.ai)
+- Meta AI
 - Deepseek
 
 ## Installation
